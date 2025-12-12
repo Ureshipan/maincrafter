@@ -1,0 +1,29 @@
+{
+  "name": "maincraft",
+  "version": "1.0.0",
+  "description": "Попытка сделать minecraft бота с AI стратегическим мышлением и алгоритмическим тактическим мышлением",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Ureshipan/maincraft.git"
+  },
+  "keywords": [],
+  "author": "Ureshipan",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/Ureshipan/maincraft/issues"
+  },
+  "homepage": "https://github.com/Ureshipan/maincraft#readme",
+  "dependencies": {
+    "canvas": "^3.2.0",
+    "dotenv": "^17.2.3",
+    "minecraft-data": "^3.101.0",
+    "mineflayer": "^4.33.0",
+    "mineflayer-pathfinder": "^2.4.5",
+    "prismarine-viewer": "^1.33.0",
+    "vec3": "^0.1.10"
+  }
+}
