@@ -1,29 +1,27 @@
 {
-  "name": "maincraft",
+  "name": "maincrafter",
   "version": "1.0.0",
-  "description": "Попытка сделать minecraft бота с AI стратегическим мышлением и алгоритмическим тактическим мышлением",
+  "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "dev": "node scripts/dev.mjs",
+    "mcp": "npx -y -- @fundamentallabs/minecraft-mcp"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Ureshipan/maincraft.git"
+    "url": "git+https://github.com/Ureshipan/maincrafter.git"
   },
   "keywords": [],
-  "author": "Ureshipan",
+  "author": "",
   "license": "ISC",
+  "type": "commonjs",
   "bugs": {
-    "url": "https://github.com/Ureshipan/maincraft/issues"
+    "url": "https://github.com/Ureshipan/maincrafter/issues"
   },
-  "homepage": "https://github.com/Ureshipan/maincraft#readme",
+  "homepage": "https://github.com/Ureshipan/maincrafter#readme",
   "dependencies": {
-    "canvas": "^3.2.0",
-    "dotenv": "^17.2.3",
-    "minecraft-data": "^3.101.0",
-    "mineflayer": "^4.33.0",
-    "mineflayer-pathfinder": "^2.4.5",
-    "prismarine-viewer": "^1.33.0",
-    "vec3": "^0.1.10"
+    "@modelcontextprotocol/sdk": "^1.18.0",
+    "dotenv": "^17.2.3"
   }
 }
