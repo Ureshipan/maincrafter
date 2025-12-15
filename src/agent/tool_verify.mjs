@@ -1,4 +1,4 @@
-function short (s, max = 220) {
+function short (s, max = 260) {
   const t = String(s ?? '').trim().replace(/\s+/g, ' ')
   return t.length > max ? t.slice(0, max - 1) + '…' : t
 }
@@ -22,44 +22,34 @@ function parseProgressMined (text) {
 
   // "mined 3 of 20"
   let m = t.match(/\bmined\s+(\d+)\s+of\s+(\d+)\b/i)
-  if (m) return { cur: Number(m[1]), total: Number(m[2]) }
+  if (m) return { current: Number(m[1]), total: Number(m[2]) }
 
   // "3/20"
   m = t.match(/\b(\d+)\s*\/\s*(\d+)\b/)
-  if (m) return { cur: Number(m[1]), total: Number(m[2]) }
+  if (m) return { current: Number(m[1]), total: Number(m[2]) }
 
   // "3 of 20" (без mined)
   m = t.match(/\b(\d+)\s+of\s+(\d+)\b/i)
-  if (m) return { cur: Number(m[1]), total: Number(m[2]) }
+  if (m) return { current: Number(m[1]), total: Number(m[2]) }
 
   return null
 }
 
-function looksDone (text) {
-  const t = String(text ?? '').toLowerCase()
-  return (
-    /\b(done|completed|complete|finished|success|ok)\b/.test(t) ||
-    /\barrived\b/.test(t) ||
-    /\breached\b/.test(t)
-  )
-}
-
 export function verifyToolResult ({ tool, args, resultText, toolError }) {
-  // Ошибка tool вызова — считаем финалом (done=true), чтобы записать в дневник 1 раз
   if (toolError) {
     return {
       ok: false,
       done: true,
       progress: null,
       summary: `${tool}: ошибка выполнения.`,
-      meta: { tool, args, error: short(toolError, 260) }
+      meta: { tool, args, error: short(toolError) }
     }
   }
 
   const raw = String(resultText ?? '')
   const json = tryParseJson(raw)
 
-  // Если tool когда-то вернёт структурированный ответ — используем его
+  // Если tool вернул структурированный ответ — используем
   if (json && typeof json === 'object') {
     const ok = typeof json.ok === 'boolean' ? json.ok : true
     const done = typeof json.done === 'boolean' ? json.done : true
@@ -72,42 +62,44 @@ export function verifyToolResult ({ tool, args, resultText, toolError }) {
     }
   }
 
-  // Спец-логика для mineResource: не писать прогресс, писать только финал
+  // --- STRICT режим для mineResource ---
+  // done=true ТОЛЬКО если распознали прогресс и current>=total.
   if (tool === 'mineResource') {
     const p = parseProgressMined(raw)
-    if (p && Number.isFinite(p.cur) && Number.isFinite(p.total) && p.total > 0) {
-      const done = p.cur >= p.total
+
+    if (p && Number.isFinite(p.current) && Number.isFinite(p.total) && p.total > 0) {
+      const done = p.current >= p.total
       return {
         ok: true,
         done,
-        progress: { current: p.cur, total: p.total },
-        summary: done ? `Добыча завершена (${p.cur}/${p.total}).` : `Добыча в процессе (${p.cur}/${p.total}).`,
+        progress: { current: p.current, total: p.total },
+        summary: done
+          ? `Добыча завершена (${p.current}/${p.total}).`
+          : `Добыча в процессе (${p.current}/${p.total}).`,
         meta: {
           tool,
           resource: args?.name ?? null,
           requested: Number(args?.count ?? p.total),
-          mined: p.cur
+          mined: p.current
         }
       }
     }
 
-    // Если прогресс не распознали: по умолчанию считаем, что вызов завершился
-    const done = looksDone(raw) || true
+    // прогресс не распознали => НЕ финализируем
     return {
       ok: true,
-      done,
+      done: false,
       progress: null,
-      summary: done ? 'Добыча завершена.' : 'Добыча в процессе.',
+      summary: 'Добыча в процессе.',
       meta: {
         tool,
         resource: args?.name ?? null,
-        requested: Number(args?.count ?? NaN),
-        mined: Number(args?.count ?? NaN)
+        requested: Number(args?.count ?? NaN)
       }
     }
   }
 
-  // Для навигации/боя/еды: это “одношаговые” tools — считаем done=true
+  // Остальные tools считаем одношаговыми (done=true если не было исключения)
   return {
     ok: true,
     done: true,

@@ -5,11 +5,11 @@ import { parseMemoryFromChat } from '../memory/chat_memory.mjs'
 import { upsertPlace, formatPlacesForPrompt } from '../memory/places.mjs'
 
 import { verifyToolResult } from './tool_verify.mjs'
+import { runToolTask } from './task_runner.mjs'
 
 import { maybeStore, readDiaryTail, formatDiaryForPrompt } from '../memory/diary.mjs'
 
 function nowIso () { return new Date().toISOString() }
-
 function sleep (ms) { return new Promise(r => setTimeout(r, ms)) }
 
 function sanitizeReply (text) {
@@ -232,7 +232,6 @@ function validateAndNormalizePlan ({ cfg, lastUser, planText, toolsIndex }) {
   args = filterArgsBySchema(args, schema)
   args = coerceArgsTypesBySchema(args, schema)
 
-  // Мягкая подстановка: если tool требует userName — считаем "ко мне" = автор команды
   const req = Array.isArray(schema?.required) ? schema.required : []
   if (req.includes('userName') && !('userName' in args)) args.userName = lastUser
 
@@ -245,11 +244,9 @@ function validateAndNormalizePlan ({ cfg, lastUser, planText, toolsIndex }) {
 }
 
 export async function runAgent ({ cfg, mcp, counters }) {
-  // join & announce
   await mcp.callToolLogged('joinGame', { username: cfg.BOT_USERNAME, host: cfg.MC_HOST, port: cfg.MC_PORT })
   await mcp.callToolLogged('sendChat', { message: `online (chat=${cfg.CHAT_PREFIX}, cmd=${cfg.CMD_PREFIX}, model=${cfg.OLLAMA_MODEL})` })
 
-  // один раз в дневник: запуск
   await maybeStore({
     kind: 'status',
     from: cfg.BOT_USERNAME,
@@ -260,10 +257,10 @@ export async function runAgent ({ cfg, mcp, counters }) {
   const seen = makeSeenSet(cfg.SEEN_LIMIT)
   const chatHistory = []
   const cmdHistory = []
+
   let inFlight = false
   let lastActivityAt = Date.now()
 
-  // heartbeat (в журнал, не в дневник)
   const hb = setInterval(() => {
     appendJournal({
       type: 'heartbeat',
@@ -450,46 +447,41 @@ export async function runAgent ({ cfg, mcp, counters }) {
         }
 
         if (final.tool) {
-          let toolResText = ''
-          let toolError = null
-
-          try {
-            const toolRes = await mcp.callToolLogged(final.tool, final.args, { kind: 'cmd_exec', from: last.user, input: last.msg })
-            toolResText = extractText(toolRes)
-          } catch (e) {
-            toolError = String(e?.message || e)
-            toolResText = toolError
-          }
-
-          const verified = verifyToolResult({
+          // Вместо "1 tool-call и всё" — запускаем раннер, который ждёт done/ошибку/зависание
+          const run = await runToolTask({
+            cfg,
+            mcp,
             tool: final.tool,
             args: final.args,
-            resultText: toolResText,
-            toolError
+            from: last.user,
+            input: last.msg,
+            extractText,
+            verifyToolResult,
+            appendJournal
           })
 
           appendJournal({
-            type: 'tool_verified',
+            type: 'tool_final',
             bootId: mcp.BOOT_ID,
             ts: nowIso(),
             tool: final.tool,
-            ok: verified.ok,
-            done: verified.done,
-            progress: verified.progress || null,
-            meta: verified.meta || null
+            attempts: run.attempts,
+            ok: run.verified.ok,
+            done: run.verified.done,
+            stalled: Boolean(run.stalled),
+            progress: run.verified.progress ?? null,
+            meta: run.verified.meta ?? null
           })
 
-          // В дневник пишем только финал (done) или ошибку
-          if (verified.done || !verified.ok) {
-            await maybeStore({
-              kind: 'tool_fact',
-              from: last.user,
-              tool: final.tool,
-              ok: verified.ok,
-              text: verified.summary || `${final.tool}: ${verified.ok ? 'выполнено' : 'ошибка'}.`,
-              meta: { ...(verified.meta || {}), args: final.args }
-            })
-          }
+          // В дневник — только финал/ошибка (у run.verified.done всегда true на выходе)
+          await maybeStore({
+            kind: 'tool_fact',
+            from: last.user,
+            tool: final.tool,
+            ok: run.verified.ok,
+            text: run.verified.summary || `${final.tool}: ${run.verified.ok ? 'выполнено' : 'ошибка'}.`,
+            meta: { ...(run.verified.meta || {}), args: final.args, attempts: run.attempts }
+          })
         } else {
           await maybeStore({
             kind: 'cmd_no_tool',
@@ -541,7 +533,6 @@ export async function runAgent ({ cfg, mcp, counters }) {
           continue
         }
 
-        // Подмешиваем хвост дневника как “память”
         const diary = await readDiaryTail(30)
         const diaryBlock = formatDiaryForPrompt(diary, { maxLines: 10, maxChars: 1200 })
 
